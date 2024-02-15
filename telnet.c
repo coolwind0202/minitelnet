@@ -15,6 +15,16 @@
 #include <unistd.h>
 
 #define PORT 3000
+#define NAWS 31
+
+#define SE 240
+#define NOP 241
+#define SB 250
+#define WILL 251
+#define WONT 252
+#define DO 253
+#define DONT 254
+#define IAC 255
 
 int create_socket()
 {
@@ -28,8 +38,56 @@ int create_socket()
   return sock;
 }
 
-int wait_connection(int server_socket)
+int server_socket = 0;
+
+void exit_and_close_socket(int client_socket, int return_code)
 {
+  close(client_socket);
+  close(server_socket);
+  exit(return_code);
+}
+
+ssize_t recv_with_handling(int socket, void *buf, size_t n)
+{
+  ssize_t recv_len = 0;
+  recv_len = recv(socket, buf, n, 0);
+  if (recv_len < 0)
+  {
+    perror("Failed to receive");
+    exit_and_close_socket(socket, EXIT_FAILURE);
+  }
+
+  if (recv_len == 0)
+  {
+    fputs("Connection was closed.\n", stderr);
+    exit_and_close_socket(socket, EXIT_SUCCESS);
+  }
+
+  return recv_len;
+}
+
+char *recv_until(int socket, unsigned char c)
+{
+  size_t memsize = 100;
+  char *input = calloc(memsize, sizeof(unsigned char));
+  ssize_t recv_len = 0, total_len = 0;
+  if (input == NULL)
+  {
+    fputs("Failed to allocate memory.\n", stderr);
+    exit_and_close_socket(socket, EXIT_FAILURE);
+  }
+
+  while (input[total_len] != c)
+  {
+    recv_len = recv_with_handling(socket, input + total_len, 1);
+    total_len += recv_len;
+
+    if (total_len + 1 >= memsize)
+      input = realloc(input, memsize += 100);
+  }
+
+  input[total_len++] = 0;
+  return input;
 }
 
 int main()
@@ -40,8 +98,8 @@ int main()
   struct sockaddr_in server_name;
 
   int client_socket = 0;
-  int server_socket = create_socket();
-  char buf[50];
+  server_socket = create_socket();
+  unsigned char buf[50];
   ssize_t recv_len = 0;
 
   server_name.sin_family = AF_INET,
@@ -70,23 +128,47 @@ int main()
 
   while (true)
   {
-    recv_len = recv(client_socket, buf, 10, 0);
-    if (recv_len <= 0)
+    recv_len = recv_with_handling(client_socket, buf, 1);
+
+    /* Process Command following Iac(0xff) */
+    if (buf[0] == IAC)
     {
-      close(client_socket);
-      close(server_socket);
-      if (recv_len == 0)
+      unsigned char response[3] = {IAC, 0, buf[1]};
+      recv_len = recv_with_handling(client_socket, buf, 2);
+
+      if (recv_len < 2)
       {
-        exit(EXIT_SUCCESS);
+        fputs("Iac code is comming, but command or option is not provided.\n", stderr);
+        exit_and_close_socket(client_socket, EXIT_FAILURE);
       }
-      else
+
+      switch (buf[0])
       {
-        perror("Failed to recv");
-        exit(EXIT_FAILURE);
+      case WILL:
+        // Request from client whether we will use the option
+        response[1] = DONT;
+        send(client_socket, response, 3, 0);
+        break;
+      case DO:
+        response[1] = WONT;
+        send(client_socket, response, 3, 0);
+        break;
+      case DONT:
+      case WONT:
+        break;
+      case SB:
+        // read until coming SE
+        recv_until(client_socket, SE);
+        break;
+      default:
+        fputs("unknown command", stderr);
+        break;
       }
     }
-
-    fwrite(buf, recv_len, 1, stdout);
+    else
+    {
+      fwrite(buf, recv_len, 1, stdout);
+    }
   }
 
   return 0;
