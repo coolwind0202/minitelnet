@@ -66,7 +66,7 @@ ssize_t recv_with_handling(int socket, void *buf, size_t n)
   return recv_len;
 }
 
-char *recv_until(int socket, unsigned char c)
+unsigned char *recv_until(int socket, unsigned char c)
 {
   size_t memsize = 100;
   char *input = calloc(memsize, sizeof(unsigned char));
@@ -86,7 +86,7 @@ char *recv_until(int socket, unsigned char c)
       input = realloc(input, memsize += 100);
   }
 
-  input[total_len++] = 0;
+  input[++total_len] = 0;
   return input;
 }
 
