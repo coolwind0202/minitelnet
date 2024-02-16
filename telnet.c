@@ -26,6 +26,8 @@
 #define DONT 254
 #define IAC 255
 
+#define TERMINAL_SPEED 32
+
 int create_socket()
 {
   int sock = 0;
@@ -66,10 +68,10 @@ ssize_t recv_with_handling(int socket, void *buf, size_t n)
   return recv_len;
 }
 
-unsigned char *recv_until(int socket, unsigned char c)
+ssize_t recv_until(int socket, unsigned char c, unsigned char **output)
 {
   size_t memsize = 100;
-  char *input = calloc(memsize, sizeof(unsigned char));
+  unsigned char *input = calloc(memsize, sizeof(unsigned char));
   ssize_t recv_len = 0, total_len = 0;
   if (input == NULL)
   {
@@ -77,17 +79,17 @@ unsigned char *recv_until(int socket, unsigned char c)
     exit_and_close_socket(socket, EXIT_FAILURE);
   }
 
-  while (input[total_len] != c)
+  while (input[total_len - 1] != c)
   {
     recv_len = recv_with_handling(socket, input + total_len, 1);
     total_len += recv_len;
-
-    if (total_len + 1 >= memsize)
+    if (total_len >= memsize)
       input = realloc(input, memsize += 100);
   }
 
-  input[++total_len] = 0;
-  return input;
+  *output = input;
+
+  return total_len;
 }
 
 int main()
@@ -134,6 +136,7 @@ int main()
     if (buf[0] == IAC)
     {
       unsigned char response[3] = {IAC, 0, buf[1]};
+      unsigned char *sb_input;
       recv_len = recv_with_handling(client_socket, buf, 2);
 
       if (recv_len < 2)
@@ -146,7 +149,14 @@ int main()
       {
       case WILL:
         // Request from client whether we will use the option
-        response[1] = DONT;
+        if (buf[1] == TERMINAL_SPEED)
+        {
+          response[1] = DO;
+        }
+        else
+        {
+          response[1] = DONT;
+        }
         send(client_socket, response, 3, 0);
         break;
       case DO:
@@ -158,7 +168,10 @@ int main()
         break;
       case SB:
         // read until coming SE
-        recv_until(client_socket, SE);
+        puts("SB detected");
+        printf("%ld\n", recv_until(client_socket, SE, &sb_input));
+        printf("%hu\n", ntohs(*(unsigned short int *)sb_input));
+        printf("%hu\n", ntohs(*(unsigned short int *)(sb_input + 2)));
         break;
       default:
         fputs("unknown command", stderr);
