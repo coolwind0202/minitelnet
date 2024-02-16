@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include <sys/types.h>
 // for socket API
@@ -138,6 +139,7 @@ int main()
     {
       unsigned char response[3] = {IAC, 0, 0};
       unsigned char *sb_input;
+      ssize_t sb_len = 0;
 
       recv_len = recv_with_handling(client_socket, buf, 2);
       response[2] = buf[1];
@@ -162,6 +164,13 @@ int main()
           response[1] = DONT;
         }
         send(client_socket, response, 3, 0);
+
+        if (buf[1] == TERMINAL_SPEED)
+        {
+          puts("Terminal speed");
+          unsigned char naws_sb[] = {IAC, SB, TERMINAL_SPEED, 1, IAC, SE};
+          send(client_socket, naws_sb, 6, 0);
+        }
         break;
       case DO:
         response[1] = WONT;
@@ -173,18 +182,19 @@ int main()
       case SB:
         // read until coming SE
         puts("SB detected");
-        printf("%ld\n", recv_until(client_socket, SE, &sb_input));
+        sb_len = recv_until(client_socket, SE, &sb_input);
+        printf("%ld\n", sb_len);
         switch (buf[1])
         {
         case TERMINAL_SPEED:
           switch (sb_input[0])
           {
-          case 1:
-            // SEND operation
-            break;
           case 0:
             // IS operation
-            // printf("%s\n", sb_input + 1);
+
+            unsigned char *tspeed_value = calloc(sb_len - 3 + 1, sizeof(unsigned char));
+            memcpy(tspeed_value, sb_input + 1, sb_len - 3);
+            printf("%s\n", tspeed_value);
             break;
           }
           break;
