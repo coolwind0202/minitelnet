@@ -26,6 +26,7 @@
 #define DONT 254
 #define IAC 255
 
+#define WINDOW_SIZE 31
 #define TERMINAL_SPEED 32
 
 int create_socket()
@@ -151,12 +152,13 @@ int main()
       {
       case WILL:
         // Request from client whether we will use the option
-        if (buf[1] == TERMINAL_SPEED)
+        switch (buf[1])
         {
+        case TERMINAL_SPEED:
+        case NAWS:
           response[1] = DO;
-        }
-        else
-        {
+          break;
+        default:
           response[1] = DONT;
         }
         send(client_socket, response, 3, 0);
@@ -172,11 +174,28 @@ int main()
         // read until coming SE
         puts("SB detected");
         printf("%ld\n", recv_until(client_socket, SE, &sb_input));
-        printf("%hu\n", ntohs(*(unsigned short int *)sb_input));
-        printf("%hu\n", ntohs(*(unsigned short int *)(sb_input + 2)));
+        switch (buf[1])
+        {
+        case TERMINAL_SPEED:
+          switch (sb_input[0])
+          {
+          case 1:
+            // SEND operation
+            break;
+          case 0:
+            // IS operation
+            // printf("%s\n", sb_input + 1);
+            break;
+          }
+          break;
+        case NAWS:
+          printf("%hu\n", ntohs(*(unsigned short int *)sb_input));
+          printf("%hu\n", ntohs(*(unsigned short int *)(sb_input + 2)));
+          break;
+        }
         break;
       default:
-        fputs("unknown command", stderr);
+        fprintf(stderr, "unknown command: %u / %u\n", buf[0], buf[1]);
         break;
       }
     }
