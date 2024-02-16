@@ -135,9 +135,11 @@ int main()
     /* Process Command following Iac(0xff) */
     if (buf[0] == IAC)
     {
-      unsigned char response[3] = {IAC, 0, buf[1]};
+      unsigned char response[3] = {IAC, 0, 0};
       unsigned char *sb_input;
+
       recv_len = recv_with_handling(client_socket, buf, 2);
+      response[2] = buf[1];
 
       if (recv_len < 2)
       {
